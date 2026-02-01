@@ -271,9 +271,11 @@ Reason: "Daily discount quota reached. Please try again tomorrow.",
 
 ### "SAGA choreography pattern with compensation logic"
 ✅ **Implemented**: 
-- Forward: [services/order/main.go#L122-130](services/order/main.go)
-- Compensation: [services/order/main.go#L158-171](services/order/main.go)
-- Rollback: [services/discount/main.go#L208-223](services/discount/main.go)
+- Forward: [services/order/main.go](services/order/main.go) - Publishes OrderCreated
+- Quota Reservation: [services/discount/main.go](services/discount/main.go) - Listens for OrderCreated, reserves quota
+- Compensation Trigger: [services/order/main.go](services/order/main.go) - Publishes DiscountRelease on failure
+- Compensation Execution: [services/discount/main.go](services/discount/main.go) - Listens for DiscountRelease, decrements quota
+- **Key**: Discount service listens for BOTH OrderCreated AND DiscountRelease events
 
 ---
 
@@ -300,7 +302,44 @@ All assumptions are reasonable and documented in [README.md](README.md):
 5. ✅ Event ordering via Firestore timestamp ordering
 
 ---
+## 🔍 Critical Implementation Details
 
+### Event Listener Configuration
+**Discount Service** must listen for TWO event types:
+```go
+iter := client.Collection(CollectionEvents).
+    Where("type", "in", []string{EventTypeOrderCreated, EventTypeDiscountRelease}).
+    OrderBy("timestamp", firestore.Asc).
+    Snapshots(ctx)
+```
+- `OrderCreated` → Process quota reservation
+- `DiscountRelease` → Execute compensation
+
+### Smart Event Publishing
+**Order Service** only publishes events for R1-eligible orders:
+```go
+if !req.IsR1Eligible {
+    // Direct response, no events
+    return "CONFIRMED"
+}
+// Publish OrderCreated event for quota check
+```
+
+### Automatic Quota Reset
+No cron job needed - uses date-based document IDs:
+```go
+today := time.Now().In(ist).Format("2006-01-02") // e.g., "2026-02-01"
+quotaRef := client.Collection(CollectionQuotas).Doc(today)
+```
+Each day gets a new document, automatically starting at count=0.
+
+### Input Validation
+- **Name**: Required, non-empty
+- **Gender**: Case-insensitive, falls back to "other" for invalid input
+- **DOB**: Must be YYYY-MM-DD format, validates before birthday check
+- **Services**: Invalid selections silently skipped, requires at least one valid
+
+---
 ## 🚀 Technical Excellence
 
 ### Code Quality

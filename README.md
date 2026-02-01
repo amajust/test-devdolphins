@@ -130,8 +130,9 @@ Apply 12% discount if **ANY** of these conditions are met:
 
 ### Prerequisites
 - Go 1.25.6 or higher
-- GCP Project with Firestore enabled
+- GCP Project with Firestore enabled (project: `devdolphins-93118`)
 - Service account JSON key file (place as `service-account.json`)
+- Firestore indexes configured (see below)
 - Git
 
 ### Installation Steps
@@ -152,7 +153,24 @@ go mod download
 export GOOGLE_APPLICATION_CREDENTIALS=./service-account.json
 ```
 
-4. **Build the binaries**
+4. **Configure Firestore Indexes**
+
+The system requires a composite index for querying events:
+
+**Automatic Setup** (Recommended):
+- Run the discount service once, it will provide a URL to auto-create the index
+- Click the URL in the error message and approve the index creation
+
+**Manual Setup**:
+1. Go to Firebase Console: https://console.firebase.google.com/project/devdolphins-93118/firestore/indexes
+2. Create Composite Index:
+   - Collection: `events`
+   - Fields:
+     - `type` - Ascending
+     - `timestamp` - Ascending
+3. Wait 2-5 minutes for index to build
+
+5. **Build the binaries**
 ```bash
 # Create bin directory
 mkdir -p bin
@@ -574,12 +592,14 @@ All events stored in Firestore with:
 This implementation demonstrates:
 
 1. **Event-Driven Architecture**: Loosely coupled services communicating via events
-2. **SAGA Pattern**: Distributed transactions with compensation logic
-3. **Business Rule Implementation**: Complex discount eligibility logic
-4. **Quota Management**: Transactional daily limits with IST timezone handling
-5. **Observability**: Structured logging and distributed tracing
-6. **Error Handling**: Graceful failures with clear user messages
-7. **Idempotency**: Preventing duplicate processing of events
+2. **SAGA Choreography Pattern**: Distributed transactions with compensation logic (DiscountRelease)
+3. **Business Rule Implementation**: Complex discount eligibility (R1) and quota management (R2)
+4. **Smart Event Publishing**: Only R1-eligible orders use event-driven flow for efficiency
+5. **Quota Management**: Date-based automatic reset with IST timezone handling
+6. **Observability**: Structured JSON logging with trace IDs for request correlation
+7. **Error Handling**: Input validation, graceful failures with clear user messages
+8. **Idempotency**: Preventing duplicate event processing with existence checks
+9. **Chaos Engineering**: Built-in failure simulation for testing resilience
 
 ---
 
